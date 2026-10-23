@@ -188,6 +188,8 @@ section('client.js — the composer')
 
 const clientItems = await runClientBundleCheck()
 for (const entry of clientItems) {
+  // The client bundle groups its own checks; a new group starts a new section.
+  if (entry.section && entry.section !== currentSection) section(entry.section)
   record(entry.status, entry.name, entry.detail)
 }
 

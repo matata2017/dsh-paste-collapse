@@ -51,6 +51,18 @@ closes it.
 The pill uses the DSH native colours (CSS variables only, no hard coded hex),
 so it follows the light and the dark theme.
 
+## The sent message shows a pill
+
+The turn you already sent shows the collapsed paste as a pill as well, instead
+of a wall of text: the bubble renders the pasted text as a small chip with the
+preview and the character count, and clicking it opens the same side panel
+with the whole text.
+
+The bubble asks the client first and the host second, so a message still shows
+its pill after the client lost its copy (after a restart, for example). When
+neither of them has the text any more, the message simply shows the plain
+text.
+
 ## Install
 
 ```bash
@@ -82,9 +94,9 @@ host half is what expands it again.
   to the model as it is. The pill marks this state as *text lost*.
 * **No token saving.** The model reads the full text, exactly as if you had
   pasted it directly. The plugin only makes the composer readable.
-* **A paste is only collapsed when the host answers.** If the host call fails
-  or takes longer than 1.5 seconds, the text is inserted as it is — the paste
-  is never lost.
+* **A paste is only collapsed when the host answers.** The host is asked twice,
+  every attempt waits up to 5 seconds. When it still does not answer, the text
+  is inserted as it is — the paste is never lost.
 * **A placeholder the user deletes is dropped.** The client tells the host, and
   the host forgets the text once the turn has had its chance to use it — so
   the next paste of the same size starts at the bare placeholder again.
@@ -92,6 +104,9 @@ host half is what expands it again.
   turn is sent, and the expansion on the host runs after that. The text
   therefore survives the clear: the model reads the full text, not the
   placeholder.
+* **The texts are forgotten one by one.** The host keeps the 50 newest texts
+  it delivered and the client keeps the 100 newest texts it sent; older ones
+  are dropped, and their pill shows the plain text instead.
 
 ## Differences from Codex
 
@@ -109,8 +124,8 @@ Only two:
 node --check lib/marker.js
 node --check lib/index.js
 node --check client.js
-node test/run-tests.mjs      # 46 checks: the marker rules and the client bundle
-node selftest/host-e2e.mjs   # 20 checks: the host plugin end to end
+node test/run-tests.mjs      # 66 checks: the marker rules and the client bundle
+node selftest/host-e2e.mjs   # 24 checks: the host plugin end to end
 ```
 
 `test/client-bundle.mjs` runs `client.js` inside a fake window with a fake

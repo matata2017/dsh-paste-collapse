@@ -134,7 +134,7 @@ check('the remote descriptor lists the methods', () => {
   const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(controller), DESCRIPTOR_KEY)
   assert.ok(descriptor, 'the remote method descriptor is missing')
   const methods = descriptor.value.methods.map((entry) => entry.method)
-  assert.deepEqual(methods, ['remember', 'has'])
+  assert.deepEqual(methods, ['remember', 'has', 'text'])
   assert.equal(descriptor.value.version, 1)
 })
 check('the remote namespace is paste', () => {
@@ -261,6 +261,44 @@ await checkAsync('a new paste of the same size is not shadowed by a revoked one'
   const payload = { agent: { id: 'agent-1' }, messages, turn: 1, step: 1, signal: new AbortController().signal }
   const decision = await ctx.emit('agent/pre-step', payload, async () => ({ kind: 'enter', messages }))
   assert.equal(decision.messages[0].content[0].text, 'new')
+})
+
+console.log('the retained texts')
+await checkAsync('the host hands out the text of a paste the turn used', async () => {
+  const fresh = createCtx()
+  apply(fresh, {})
+  const freshController = fresh.services.get('pasteController')
+  freshController.remember('[Pasted Content 2000 chars]', 'the full text')
+  const messages = [userMessage('[Pasted Content 2000 chars]')]
+  const payload = { agent: { id: 'agent-1' }, messages, turn: 1, step: 1, signal: new AbortController().signal }
+  await fresh.emit('agent/pre-step', payload, async () => ({ kind: 'enter', messages }))
+  // The bubble shows the expanded text, so the client asks the host for the
+  // original — the host has to keep it.
+  assert.deepEqual(freshController.text('[Pasted Content 2000 chars]'), { ok: true, text: 'the full text' })
+})
+check('text() returns null for a placeholder the host does not know', () => {
+  assert.deepEqual(controller.text('[Pasted Content 9999 chars]'), { ok: true, text: null })
+})
+check('text() rejects an empty placeholder', () => {
+  const result = controller.text('')
+  assert.equal(result.ok, false)
+})
+await checkAsync('the host keeps the 50 newest used texts', async () => {
+  const fresh = createCtx()
+  apply(fresh, {})
+  const freshController = fresh.services.get('pasteController')
+  const placeholders = []
+  for (let index = 0; index < 60; index += 1) {
+    const placeholder = `[Pasted Content ${20000 + index} chars]`
+    placeholders.push(placeholder)
+    freshController.remember(placeholder, `text ${index}`)
+  }
+  const messages = [userMessage(placeholders.join(' '))]
+  const payload = { agent: { id: 'agent-1' }, messages, turn: 1, step: 1, signal: new AbortController().signal }
+  await fresh.emit('agent/pre-step', payload, async () => ({ kind: 'enter', messages }))
+  assert.equal(freshController.pending.size(), 50)
+  assert.deepEqual(freshController.text(placeholders[0]), { ok: true, text: null })
+  assert.deepEqual(freshController.text(placeholders[59]), { ok: true, text: 'text 59' })
 })
 
 console.log('the plugin stays in memory')

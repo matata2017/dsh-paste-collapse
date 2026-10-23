@@ -31,8 +31,21 @@ window.__ModuleLoader__.load({
 
     /** Codex's paste threshold (chat_composer.rs:457). */
     const PASTE_THRESHOLD = 1000
-    /** How long the host may take before the paste is inserted uncollapsed. */
-    const HOST_TIMEOUT_MS = 1500
+    /**
+     * How long the host may take before the paste is inserted uncollapsed.
+     *
+     * The host is busy while an agent turn runs, and a busy host answers
+     * late: a paste that lands in the middle of a turn must not be
+     * uncollapsed just because the host did not answer within a second and
+     * a half.
+     */
+    const HOST_TIMEOUT_MS = 5000
+    /**
+     * How often the paste is handed to the host before the text is inserted
+     * as it is. The first attempt can lose the race with a busy host, the
+     * second one usually wins.
+     */
+    const HOST_ATTEMPTS = 2
 
     /**
      * Codex's numbering rule (`next_large_paste_placeholder`).
@@ -88,6 +101,7 @@ window.__ModuleLoader__.load({
       },
       count: '{count} chars',
       lost: 'text lost',
+      loading: 'loading…',
       expand: 'show the full text',
       collapse: 'collapse',
       drawerTitle: 'Pasted text',
@@ -104,6 +118,7 @@ window.__ModuleLoader__.load({
       },
       count: '{count} 字符',
       lost: '原文已丢失',
+      loading: '加载中…',
       expand: '展开全文',
       collapse: '收起',
       drawerTitle: '粘贴文本',
@@ -130,6 +145,14 @@ window.__ModuleLoader__.load({
       '.__dpc_preview{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}',
       '.__dpc_count{color:var(--dsw-alias-label-tertiary);flex:none}',
       '.__dpc_lost{color:var(--dsw-alias-state-error-primary);flex:none}',
+      // The pill inside a sent message: the same chip as the one in the
+      // composer, sized for a line of text. No literal colors: the theme
+      // variables decide.
+      '.__dpc_inlinePill{display:inline-flex;align-items:center;gap:4px;max-width:260px;padding:0 6px;border-radius:999px;border:0.5px solid color-mix(in srgb,var(--dsw-alias-state-business-primary) 26%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 10%,var(--dsw-alias-bg-layer-2,transparent));color:var(--dsw-alias-label-primary-bluish,var(--dsw-alias-label-primary));font-size:0.92em;line-height:1.6;font-family:inherit;cursor:pointer;vertical-align:baseline;white-space:nowrap;overflow:hidden}',
+      '.__dpc_inlinePill:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 16%,var(--dsw-alias-bg-layer-2,transparent))}',
+      '.__dpc_inlinePill:focus-visible{outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:1px}',
+      '.__dpc_inlinePill .__dpc_preview{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%}',
+      '.__dpc_inlinePill .__dpc_icon{flex:none}',
       // The side panel: the full pasted text, the way Codex and WorkBuddy open
       // a drawer instead of squeezing the text into a popover.
       '.__dpc_backdrop{position:fixed;inset:0;z-index:1199;background:rgb(0 0 0 / 18%)}',
@@ -160,6 +183,45 @@ window.__ModuleLoader__.load({
      */
     const pasteTexts = new Map()
 
+    /**
+     * The text of every paste that left the composer, by placeholder.
+     *
+     * The draft is cleared when the turn is sent, and the message of that
+     * turn is still on its way to the bubble: the text moves here instead of
+     * being dropped, so the bubble can show the paste again.
+     *
+     * @type {Map<string, string>}
+     */
+    const sentTexts = new Map()
+
+    /** How many sent pastes are kept around. */
+    const SENT_TEXT_LIMIT = 100
+
+    /**
+     * @param {string} placeholder
+     * @param {string} text
+     */
+    function rememberSentText(placeholder, text) {
+      sentTexts.delete(placeholder)
+      sentTexts.set(placeholder, text)
+      while (sentTexts.size > SENT_TEXT_LIMIT) {
+        const oldest = sentTexts.keys().next()
+        if (oldest.done) break
+        sentTexts.delete(oldest.value)
+      }
+    }
+
+    /**
+     * The text of a paste, wherever this client knows it: in the composer or
+     * in a message that was sent.
+     *
+     * @param {string} placeholder
+     * @returns {string | undefined}
+     */
+    function localPasteText(placeholder) {
+      return pasteTexts.get(placeholder) ?? sentTexts.get(placeholder)
+    }
+
     /** The paste the drawer shows, or null when it is closed. */
     let drawerState = null
     const drawerListeners = new Set()
@@ -170,6 +232,17 @@ window.__ModuleLoader__.load({
     function setDrawer(next) {
       drawerState = next
       for (const listener of drawerListeners) listener()
+    }
+
+    /**
+     * Open the side panel for a paste — from the composer pill or from the
+     * pill inside a sent message.
+     *
+     * @param {string} placeholder
+     * @param {number} chars
+     */
+    function openPasteDrawer(placeholder, chars) {
+      setDrawer({ placeholder, chars })
     }
 
     /**
@@ -237,6 +310,30 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /**
+     * Call the host, and try again when it did not answer.
+     *
+     * The host is busy while an agent turn runs, and a busy host answers
+     * late. The paste is handed over once more before the text is inserted
+     * as it is — the text must not be lost because the host was busy.
+     *
+     * @param {string} method
+     * @param {object} args
+     * @param {number} ms
+     * @param {number} [attempts]
+     */
+    async function callWithRetries(method, args, ms, attempts = HOST_ATTEMPTS) {
+      let lastError
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        try {
+          return await callWithTimeout(method, args, ms)
+        } catch (error) {
+          lastError = error
+        }
+      }
+      throw lastError instanceof Error ? lastError : new Error('paste call failed')
+    }
+
     /* ---------------- the pill row ---------------- */
 
     /**
@@ -302,13 +399,24 @@ window.__ModuleLoader__.load({
         if (kept.length === entriesRef.current.length) return
         const dropped = entriesRef.current.filter((entry) => !draft.includes(entry.placeholder))
         entriesRef.current = kept
+        if (draft === '') {
+          // The turn was sent: the composer is empty, but the message that
+          // carries the paste is on its way. The text moves to the sent
+          // texts — the bubble shows the paste as a pill and needs the text
+          // to open it.
+          for (const entry of dropped) {
+            rememberSentText(entry.placeholder, entry.text)
+            pasteTexts.delete(entry.placeholder)
+          }
+          bump((value) => value + 1)
+          return
+        }
         for (const entry of dropped) pasteTexts.delete(entry.placeholder)
         bump((value) => value + 1)
-        // Tell the host the paste is gone — but only when the user deleted
-        // the placeholder while the draft still had something else in it. An
-        // empty draft means the turn was submitted: the host expands the
-        // placeholder after that, so it still needs the text.
-        if (draft === '') return
+        // Tell the host the paste is gone — the placeholder left the draft
+        // while the draft still had something else in it. An empty draft
+        // means the turn was submitted: the host expands the placeholder
+        // after that, so it still needs the text.
         for (const entry of dropped) {
           void callWithTimeout('remember', { placeholder: entry.placeholder, text: null }, HOST_TIMEOUT_MS).catch(
             () => {},
@@ -412,7 +520,10 @@ window.__ModuleLoader__.load({
         const placeholder = nextPlaceholder({ charCount: text.length, pending: pending() })
         let stored = false
         try {
-          const value = await callWithTimeout('remember', { placeholder, text }, HOST_TIMEOUT_MS)
+          // The host is busy while an agent turn runs: hand the text over
+          // once more before the collapse is given up. Nothing is inserted
+          // yet, so a retry cannot leave two placeholders behind.
+          const value = await callWithRetries('remember', { placeholder, text }, HOST_TIMEOUT_MS)
           stored = value?.ok === true
         } catch {
           stored = false
@@ -472,6 +583,162 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /* ---------------- the pill inside a message ---------------- */
+
+    /**
+     * The Codex placeholder as it is written in a message.
+     *
+     * @type {RegExp}
+     */
+    const PLACEHOLDER_PATTERN = /\[Pasted Content (\d+) chars\](?: #(\d+))?/g
+
+    /**
+     * Every paste this client knows about: the ones in the composer and the
+     * ones that were sent.
+     *
+     * @returns {Array<[string, string]>}
+     */
+    function knownPastes() {
+      return [...pasteTexts.entries(), ...sentTexts.entries()]
+    }
+
+    /**
+     * Split a message into plain text and the collapsed pastes inside it.
+     *
+     * Two things can mark a paste in a message:
+     *
+     * - the placeholder itself, when the message still carries it
+     * - the pasted text, when the message carries the expanded text: the
+     *   host swaps the placeholder back before the model reads the turn, and
+     *   the message the user reads is that expanded one
+     *
+     * A pasted text is a thousand characters at least, so finding it inside
+     * a message cannot match the wrong thing.
+     *
+     * @param {string} text
+     * @returns {Array<{ kind: 'text', text: string } | { kind: 'paste', placeholder: string, chars: number, text?: string }>}
+     */
+    function splitPasteParts(text) {
+      if (typeof text !== 'string' || text === '') return []
+      /** @type {Array<{ start: number, end: number, placeholder: string, chars: number, text?: string }>} */
+      const spans = []
+      PLACEHOLDER_PATTERN.lastIndex = 0
+      let match = PLACEHOLDER_PATTERN.exec(text)
+      while (match !== null) {
+        const chars = Number(match[1])
+        spans.push({
+          start: match.index,
+          end: match.index + match[0].length,
+          placeholder: match[0],
+          chars: Number.isFinite(chars) ? chars : 0,
+        })
+        match = PLACEHOLDER_PATTERN.exec(text)
+      }
+      for (const [placeholder, pasted] of knownPastes()) {
+        if (typeof pasted !== 'string' || pasted.length < PASTE_THRESHOLD) continue
+        let at = text.indexOf(pasted)
+        while (at >= 0) {
+          spans.push({
+            start: at,
+            end: at + pasted.length,
+            placeholder,
+            chars: pasted.length,
+            text: pasted,
+          })
+          at = text.indexOf(pasted, at + pasted.length)
+        }
+      }
+      if (spans.length === 0) return []
+      spans.sort((left, right) => {
+        if (left.start !== right.start) return left.start - right.start
+        return right.end - right.start - (left.end - left.start)
+      })
+      const kept = []
+      for (const span of spans) {
+        const previous = kept[kept.length - 1]
+        if (!previous || span.start >= previous.end) {
+          kept.push(span)
+          continue
+        }
+        // The two overlap: the longer one wins.
+        if (span.end - span.start > previous.end - previous.start) kept[kept.length - 1] = span
+      }
+      const parts = []
+      let cursor = 0
+      for (const span of kept) {
+        if (span.start > cursor) parts.push({ kind: 'text', text: text.slice(cursor, span.start) })
+        parts.push({
+          kind: 'paste',
+          placeholder: span.placeholder,
+          chars: span.chars,
+          text: span.text,
+        })
+        cursor = span.end
+      }
+      if (cursor < text.length) parts.push({ kind: 'text', text: text.slice(cursor) })
+      return parts
+    }
+
+    /**
+     * The pill inside a message bubble: the collapsed paste, clickable.
+     *
+     * @param {{ placeholder: string, chars: number, text?: string }} props
+     */
+    function PasteInlinePill(props) {
+      const placeholder = props.placeholder
+      const chars = props.chars
+      const text = props.text ?? localPasteText(placeholder)
+      return h(
+        'button',
+        {
+          type: 'button',
+          className: '__dpc_inlinePill',
+          onClick: () => openPasteDrawer(placeholder, chars),
+          title: translate('view'),
+          'aria-haspopup': 'dialog',
+        },
+        h('span', { className: '__dpc_icon' }, pasteIcon()),
+        h('span', { className: '__dpc_preview' }, previewText(text ?? '', 40)),
+        h('span', { className: '__dpc_count' }, format(translate('count'), { count: chars })),
+      )
+    }
+
+    /**
+     * The renderer for the text of a user message.
+     *
+     * The host renders the plain text of a message with the `text` key of
+     * the `conversation.user.text.node` slot. This renderer takes that seat
+     * and turns every collapsed paste in the message into a pill, so the
+     * bubble shows the same thing the composer showed.
+     *
+     * @param {{ node?: { data?: { text?: string, display?: string } }, raw?: string }} props
+     */
+    function PasteAwareText(props) {
+      let text = ''
+      try {
+        text = props?.node?.data?.display ?? props?.node?.data?.text ?? props?.raw ?? ''
+        const parts = splitPasteParts(text)
+        if (parts.length === 0) return h('span', null, text)
+        return h(
+          React.Fragment,
+          null,
+          parts.map((part, index) =>
+            part.kind === 'text'
+              ? h('span', { key: `text-${index}` }, part.text)
+              : h(PasteInlinePill, {
+                  key: `paste-${index}`,
+                  placeholder: part.placeholder,
+                  chars: part.chars,
+                  text: part.text,
+                }),
+          ),
+        )
+      } catch {
+        // A paste that cannot be rendered must never break the message.
+        return h('span', null, text)
+      }
+    }
+
     /* ---------------- the side panel ---------------- */
 
     /**
@@ -481,6 +748,29 @@ window.__ModuleLoader__.load({
     function PasteDrawer() {
       const state = useDrawer()
       const [copied, setCopied] = React.useState(false)
+      /** The text the host handed out, `null` when it does not have it. */
+      const [remoteText, setRemoteText] = React.useState(undefined)
+
+      React.useEffect(() => {
+        if (!state) return undefined
+        // The client may have lost its own copy — after a reload, or when
+        // the paste belongs to another window. The host keeps the text of a
+        // delivered paste and hands it out again.
+        setRemoteText(undefined)
+        if (typeof localPasteText(state.placeholder) === 'string') return undefined
+        let cancelled = false
+        void (async () => {
+          try {
+            const value = await callWithRetries('text', { placeholder: state.placeholder }, HOST_TIMEOUT_MS)
+            if (!cancelled) setRemoteText(typeof value?.text === 'string' ? value.text : null)
+          } catch {
+            if (!cancelled) setRemoteText(null)
+          }
+        })()
+        return () => {
+          cancelled = true
+        }
+      }, [state?.placeholder])
 
       React.useEffect(() => {
         if (!state) return undefined
@@ -498,7 +788,11 @@ window.__ModuleLoader__.load({
       }, [copied])
 
       if (!state) return null
-      const text = pasteTexts.get(state.placeholder)
+      const text = localPasteText(state.placeholder) ?? remoteText
+      // `undefined` means the host did not answer yet, `null` means it does
+      // not have the text any more.
+      const body =
+        typeof text === 'string' ? text : remoteText === null ? translate('lost') : translate('loading')
 
       async function copy() {
         if (typeof text !== 'string') return
@@ -542,7 +836,7 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { className: '__dpc_drawerBody' },
-            typeof text === 'string' ? text : translate('lost'),
+            body,
           ),
           h(
             'div',
@@ -601,6 +895,25 @@ window.__ModuleLoader__.load({
           )
         } catch {
           /* the shell overlay slot is optional */
+        }
+        try {
+          // The text of a user message: the host renders it with the `text`
+          // key of this slot. A smaller priority wins the cell, so this
+          // renderer takes the seat and shows the collapsed pastes as pills.
+          client.slots.inject('conversation.user.text.node', function* () {
+            yield client.slots.register(
+              {
+                name: 'conversation.user.text.node',
+                key: 'text',
+                priority: 50,
+                locale: NS,
+                inject: () => ({ t: translate }),
+              },
+              PasteAwareText,
+            )
+          })
+        } catch {
+          /* the user text slot is optional */
         }
         setConnection(resolveHandle(client.connection))
       })

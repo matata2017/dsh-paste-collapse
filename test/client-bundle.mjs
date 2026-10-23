@@ -33,8 +33,8 @@ const THRESHOLD = 1000
  * @param {boolean} ok
  * @param {string} [detail]
  */
-function item(status, name, detail) {
-  return { status, name, detail }
+function item(status, name, detail, section) {
+  return { status, name, detail, section }
 }
 
 /* ------------------------------------------------------------------ *
@@ -282,12 +282,14 @@ async function settle(times = 4) {
  * ------------------------------------------------------------------ */
 
 /**
- * @param {{ host?: 'ok' | 'fail' | 'hang' }} [options]
+ * @param {{ host?: 'ok' | 'fail' | 'hang', rememberFailures?: number, hostText?: string | null }} [options]
  */
 function createEnvironment(options = {}) {
   const dom = createDom()
   const hostCalls = []
   const { React, renderComponent, unmountComponent } = createReact(dom)
+  // How often the mock refuses to store a paste before it answers.
+  let rememberFailures = Number.isInteger(options.rememberFailures) ? options.rememberFailures : 0
 
   const host = {
     rpc: {
@@ -301,6 +303,14 @@ function createEnvironment(options = {}) {
         }
         if (method === 'paste/has') {
           return { ok: true, value: { ok: true, has: true } }
+        }
+        if (method === 'paste/text') {
+          return { ok: true, value: { ok: true, text: options.hostText ?? null } }
+        }
+        if (method === 'paste/remember' && rememberFailures > 0) {
+          // The host is busy: it does not take the paste this time.
+          rememberFailures -= 1
+          return { ok: false, error: { message: 'the host is busy' } }
         }
         return { ok: true, value: { ok: true } }
       },
@@ -327,7 +337,10 @@ function createEnvironment(options = {}) {
     document: dom.document,
     console,
     navigator: { clipboard: { writeText: async () => {} } },
-    setTimeout,
+    // The client waits five seconds for the host before it gives up on the
+    // collapse. The fake clock shortens every timer, so the test does not
+    // have to wait for it.
+    setTimeout: (fn, ms, ...rest) => setTimeout(fn, Math.min(Number(ms) || 0, 50), ...rest),
     clearTimeout,
     setInterval,
     clearInterval,
@@ -349,7 +362,20 @@ function createEnvironment(options = {}) {
     },
     slots: {
       inject: (name, factory) => {
-        registrations.push({ name, entry: factory() })
+        // A slot injection returns a disposer, a generator of disposers, or
+        // — in this test — the registration itself.
+        const produced = factory()
+        const entries = []
+        if (produced && typeof produced.next === 'function') {
+          let step = produced.next()
+          while (!step.done) {
+            entries.push(step.value)
+            step = produced.next()
+          }
+        } else if (produced) {
+          entries.push(produced)
+        }
+        registrations.push({ name, entry: entries[0], entries })
       },
       register: (spec, component) => ({ spec, component }),
     },
@@ -366,6 +392,8 @@ function createEnvironment(options = {}) {
   const component = registration?.entry?.component
   const drawerRegistration = registrations.find((entry) => entry.name === 'shell.overlay')
   const drawerComponent = drawerRegistration?.entry?.component
+  const userTextRegistration = registrations.find((entry) => entry.name === 'conversation.user.text.node')
+  const userTextComponent = userTextRegistration?.entry?.component
 
   const inserted = []
   const inputActions = {
@@ -398,6 +426,11 @@ function createEnvironment(options = {}) {
     drawerComponent,
     renderDrawer(props) {
       return renderComponent(drawerComponent, props)
+    },
+    userTextComponent,
+    /** Render the text of a user message the way the chat bubble does. */
+    renderUserText(props) {
+      return renderComponent(userTextComponent, props)
     },
     unmount() {
       unmountComponent(component)
@@ -433,15 +466,20 @@ function createEnvironment(options = {}) {
  * ------------------------------------------------------------------ */
 
 /**
- * @returns {Promise<Array<{ status: 'passed' | 'failed', name: string, detail?: string }>>}
+ * @returns {Promise<Array<{ status: 'passed' | 'failed', name: string, detail?: string, section?: string }>>}
  */
 export async function runClientBundleCheck() {
   const items = []
+  let currentSection = 'client.js — the composer'
   const record = (status, name, detail) => {
-    items.push(item(status, name, detail))
+    items.push(item(status, name, detail, currentSection))
   }
   const check = (name, ok, detail) => {
     record(ok ? 'passed' : 'failed', name, ok ? undefined : detail)
+  }
+  /** Start a new group of checks, so the report tells them apart. */
+  const section = (name) => {
+    currentSection = name
   }
 
   const pasteText = `HEAD-${'z'.repeat(2000 - 5)}`
@@ -592,6 +630,121 @@ export async function runClientBundleCheck() {
     `call=${JSON.stringify(revoke?.args)}`,
   )
   check('the pill is gone after the turn was sent', countByClass(submitting.render(), '__dpc_pill') === 0, 'the pill is still there')
+
+  // --- 10. a busy host is tried twice --------------------------------
+  const busy = createEnvironment({ rememberFailures: 1 })
+  busy.render()
+  busy.paste(pasteText)
+  await settle()
+  const busyRemembers = busy.hostCalls.filter((call) => call.method === 'paste/remember')
+  check('the host is asked twice when it is busy', busyRemembers.length === 2, `calls=${busyRemembers.length}`)
+  check(
+    'the paste is collapsed when the second attempt works',
+    busy.inserted[0]?.text === '[Pasted Content 2000 chars]',
+    `inserted=${JSON.stringify(busy.inserted[0]?.text)}`,
+  )
+  check('the text is not inserted raw when the collapse worked', busy.inserted.length === 1, `inserted=${busy.inserted.length}`)
+
+  // --- 11. a host that never answers keeps the text ------------------
+  const busyTwice = createEnvironment({ rememberFailures: 2 })
+  busyTwice.render()
+  busyTwice.paste(pasteText)
+  await settle()
+  const busyTwiceRemembers = busyTwice.hostCalls.filter((call) => call.method === 'paste/remember')
+  check('the host is asked twice and not more', busyTwiceRemembers.length === 2, `calls=${busyTwiceRemembers.length}`)
+  check(
+    'the text is inserted raw when the host never answers',
+    busyTwice.inserted[0]?.text === pasteText,
+    `inserted=${JSON.stringify(busyTwice.inserted[0]?.text?.slice(0, 12))}`,
+  )
+  check('no placeholder is left in the draft', busyTwice.inserted.length === 1, `inserted=${busyTwice.inserted.length}`)
+
+  // --- 12. the text of a sent message is rendered as a pill -----------
+  section('client.js — the sent message')
+  const bubble = createEnvironment()
+  bubble.render()
+  bubble.paste(pasteText)
+  await settle()
+  const bubbleText = `before ${pasteText} after`
+  let bubbleTree = bubble.renderUserText({ node: { id: 'text', data: { text: bubbleText } }, raw: bubbleText })
+  check(
+    'a sent message shows the pasted text as a pill',
+    countByClass(bubbleTree, '__dpc_inlinePill') === 1,
+    `pills=${countByClass(bubbleTree, '__dpc_inlinePill')}`,
+  )
+  const bubblePillText = collectText(findByClass(bubbleTree, '__dpc_inlinePill')).join('')
+  check('the pill in the message shows the preview', bubblePillText.includes('HEAD-'), `pill text=${JSON.stringify(bubblePillText)}`)
+  check('the pill in the message shows the character count', bubblePillText.includes('2000'), `pill text=${JSON.stringify(bubblePillText)}`)
+  const bubbleText2 = collectText(bubbleTree).join('')
+  check(
+    'the message keeps the text around the paste',
+    bubbleText2.includes('before') && bubbleText2.includes('after'),
+    `message=${JSON.stringify(bubbleText2.slice(0, 40))}`,
+  )
+
+  // --- 13. a message that still carries the placeholder --------------
+  const placeholderText = 'before [Pasted Content 2000 chars] after'
+  bubbleTree = bubble.renderUserText({ node: { id: 'text', data: { text: placeholderText } }, raw: placeholderText })
+  check(
+    'a message with a placeholder shows a pill',
+    countByClass(bubbleTree, '__dpc_inlinePill') === 1,
+    `pills=${countByClass(bubbleTree, '__dpc_inlinePill')}`,
+  )
+  const placeholderPill = collectText(findByClass(bubbleTree, '__dpc_inlinePill')).join('')
+  check('the placeholder pill shows the preview', placeholderPill.includes('HEAD-'), `pill text=${JSON.stringify(placeholderPill)}`)
+  check('the placeholder pill shows the character count', placeholderPill.includes('2000'), `pill text=${JSON.stringify(placeholderPill)}`)
+
+  // --- 14. clicking the pill in the message opens the side panel ------
+  findByClass(bubbleTree, '__dpc_inlinePill')?.props?.onClick?.()
+  const bubbleDrawer = bubble.renderDrawer()
+  const bubbleDrawerText = collectText(findByClass(bubbleDrawer, '__dpc_drawer')).join('')
+  check(
+    'clicking the pill in the message opens the side panel',
+    findByClass(bubbleDrawer, '__dpc_drawer') !== null,
+    'no .__dpc_drawer found after the click',
+  )
+  check(
+    'the side panel shows the whole pasted text',
+    bubbleDrawerText.includes(pasteText),
+    `drawer text=${JSON.stringify(bubbleDrawerText.slice(0, 40))}`,
+  )
+  findByClass(bubbleDrawer, '__dpc_iconBtn')?.props?.onClick?.()
+
+  // --- 15. a message without a paste stays plain text ----------------
+  const plainTree = bubble.renderUserText({ node: { id: 'text', data: { text: 'just a normal message' } }, raw: 'just a normal message' })
+  check('a message without a paste shows no pill', countByClass(plainTree, '__dpc_inlinePill') === 0, 'a pill was rendered')
+  check(
+    'a message without a paste keeps its text',
+    collectText(plainTree).join('') === 'just a normal message',
+    `message=${JSON.stringify(collectText(plainTree).join(''))}`,
+  )
+
+  // --- 16. the host hands out a text the client lost -----------------
+  const lost = createEnvironment({ hostText: 'the text the host kept' })
+  lost.render()
+  const lostText = 'before [Pasted Content 3000 chars] after'
+  const lostTree = lost.renderUserText({ node: { id: 'text', data: { text: lostText } }, raw: lostText })
+  check(
+    'a message with a placeholder shows a pill without a local copy',
+    countByClass(lostTree, '__dpc_inlinePill') === 1,
+    `pills=${countByClass(lostTree, '__dpc_inlinePill')}`,
+  )
+  findByClass(lostTree, '__dpc_inlinePill')?.props?.onClick?.()
+  // The panel opens and asks the host for the text it does not have.
+  lost.renderDrawer()
+  await settle()
+  const lostDrawer = lost.renderDrawer()
+  const lostDrawerText = collectText(findByClass(lostDrawer, '__dpc_drawer')).join('')
+  check(
+    'the side panel asks the host for the text',
+    lost.hostCalls.some((call) => call.method === 'paste/text'),
+    `calls=${JSON.stringify(lost.hostCalls.map((call) => call.method))}`,
+  )
+  check(
+    'the side panel shows the text the host kept',
+    lostDrawerText.includes('the text the host kept'),
+    `drawer text=${JSON.stringify(lostDrawerText.slice(0, 40))}`,
+  )
 
   return items
 }
