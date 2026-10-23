@@ -63,6 +63,25 @@ its pill after the client lost its copy (after a restart, for example). When
 neither of them has the text any more, the message simply shows the plain
 text.
 
+### Two things worth knowing about the pill in a message
+
+**The bubble carries the expanded text, not the placeholder.** The host swaps
+the placeholder back for the full text in `agent/pre-step`, and that expanded
+text is what the session stores and what the bubble shows. The pill is
+therefore found by looking for *the pasted text the client remembers* inside
+the message. When neither the client nor the host holds that text any more —
+after a host restart, for example — the message falls back to the plain text.
+
+**The slot is won, not negotiated.** The host renders the text of a user
+message with the `text` key of the `conversation.user.text.node` slot, and
+this plugin takes that seat. In the browser the priority is allocated by the
+`cordis-client-runner` facade (`guard.ts`, `allocatePriority()`), and a plugin
+half that registers later naturally gets the lower priority — so it wins over
+the host's 100. The `priority: 50` this plugin passes explicitly only really
+takes effect on the static bundled path. Both paths win, but that is a
+precondition, not a coincidence: do not rely on being able to reorder the
+registrations.
+
 ## Install
 
 ```bash
@@ -94,9 +113,10 @@ host half is what expands it again.
   to the model as it is. The pill marks this state as *text lost*.
 * **No token saving.** The model reads the full text, exactly as if you had
   pasted it directly. The plugin only makes the composer readable.
-* **A paste is only collapsed when the host answers.** The host is asked twice,
-  every attempt waits up to 5 seconds. When it still does not answer, the text
-  is inserted as it is — the paste is never lost.
+* **A paste is only collapsed when the host answers.** The host is asked twice
+  and every attempt waits up to 5 seconds, so the paste waits at most 10
+  seconds. When the host still does not answer, the text is inserted as it
+  is — the paste is never lost.
 * **A placeholder the user deletes is dropped.** The client tells the host, and
   the host forgets the text once the turn has had its chance to use it — so
   the next paste of the same size starts at the bare placeholder again.
@@ -105,8 +125,9 @@ host half is what expands it again.
   therefore survives the clear: the model reads the full text, not the
   placeholder.
 * **The texts are forgotten one by one.** The host keeps the 50 newest texts
-  it delivered and the client keeps the 100 newest texts it sent; older ones
-  are dropped, and their pill shows the plain text instead.
+  it delivered and the client keeps the 100 newest texts it sent; the two
+  limits are independent. Older ones are dropped, and the message that held
+  one falls back to the plain text.
 
 ## Differences from Codex
 
