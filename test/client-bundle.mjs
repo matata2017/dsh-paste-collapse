@@ -514,7 +514,7 @@ export async function runClientBundleCheck() {
   const pillText = collectText(pill).join('')
   check('a pill is rendered', pill !== null, 'no .__dpc_pill found')
   check('the pill shows the preview', pillText.includes('HEAD-'), `pill text=${JSON.stringify(pillText)}`)
-  check('the pill shows the character count', pillText.includes('2000'), `pill text=${JSON.stringify(pillText)}`)
+  check('the pill shows the character count', pillText.includes('2k'), `pill text=${JSON.stringify(pillText)}`)
 
   // --- 2b. the pill opens a side panel with the whole text ------------
   check(
@@ -674,7 +674,7 @@ export async function runClientBundleCheck() {
   )
   const bubblePillText = collectText(findByClass(bubbleTree, '__dpc_inlinePill')).join('')
   check('the pill in the message shows the preview', bubblePillText.includes('HEAD-'), `pill text=${JSON.stringify(bubblePillText)}`)
-  check('the pill in the message shows the character count', bubblePillText.includes('2000'), `pill text=${JSON.stringify(bubblePillText)}`)
+  check('the pill in the message shows the character count', bubblePillText.includes('2k'), `pill text=${JSON.stringify(bubblePillText)}`)
   const bubbleText2 = collectText(bubbleTree).join('')
   check(
     'the message keeps the text around the paste',
@@ -692,7 +692,7 @@ export async function runClientBundleCheck() {
   )
   const placeholderPill = collectText(findByClass(bubbleTree, '__dpc_inlinePill')).join('')
   check('the placeholder pill shows the preview', placeholderPill.includes('HEAD-'), `pill text=${JSON.stringify(placeholderPill)}`)
-  check('the placeholder pill shows the character count', placeholderPill.includes('2000'), `pill text=${JSON.stringify(placeholderPill)}`)
+  check('the placeholder pill shows the character count', placeholderPill.includes('2k'), `pill text=${JSON.stringify(placeholderPill)}`)
 
   // --- 14. clicking the pill in the message opens the side panel ------
   findByClass(bubbleTree, '__dpc_inlinePill')?.props?.onClick?.()

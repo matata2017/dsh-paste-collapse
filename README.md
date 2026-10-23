@@ -40,8 +40,8 @@ and `expand_pending_pastes`.
 
 Every collapsed paste gets a pill on the top edge of the composer:
 
-* the first line of the pasted text, cut to 24 characters
-* the number of characters
+* the first line of the pasted text, cut to 16 characters
+* the number of characters, shortened (`6.7k` instead of `6684`)
 * click it to open the full text in a side panel
 
 The side panel is the drawer Codex and WorkBuddy use: the whole text, the

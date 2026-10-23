@@ -100,6 +100,7 @@ window.__ModuleLoader__.load({
         description: 'Large pastes collapse into a Codex-style placeholder and expand back to the full text before the model reads them.',
       },
       count: '{count} chars',
+      countK: '{value}k chars',
       lost: 'text lost',
       loading: 'loading…',
       expand: 'show the full text',
@@ -117,6 +118,7 @@ window.__ModuleLoader__.load({
         description: '大段粘贴折叠成 Codex 同款占位符，模型看到之前换回全文。',
       },
       count: '{count} 字符',
+      countK: '{value}k 字符',
       lost: '原文已丢失',
       loading: '加载中…',
       expand: '展开全文',
@@ -136,14 +138,15 @@ window.__ModuleLoader__.load({
       // card's border. Float the row above the composer, the way the slash
       // menu does (bottom: 100% + gap). The row sits ON the edge (no gap) so
       // the pill reads as a tab of the input box instead of a floating box.
-      '.__dpc_root{position:absolute;bottom:100%;left:0;right:0;display:flex;gap:6px;flex-wrap:wrap;padding:0 12px;pointer-events:none;z-index:5}',
-      '.__dpc_item{position:relative;pointer-events:auto;display:flex;flex-direction:column;gap:4px;max-width:320px}',
-      '.__dpc_pill{display:inline-flex;align-items:center;gap:6px;max-width:320px;padding:3px 10px;border-radius:999px;border:0.5px solid color-mix(in srgb,var(--dsw-alias-state-business-primary,#3964fe) 26%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-business-primary,#3964fe) 10%,var(--dsw-alias-bg-layer-2,#fff));color:var(--dsw-alias-label-primary-bluish,var(--dsw-alias-label-primary));font-size:12px;line-height:16px;font-family:inherit;cursor:pointer;text-align:left;box-shadow:var(--dsw-elevation-2,0 1px 2px rgb(0 0 0 / 6%))}',
-      '.__dpc_pill:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary,#3964fe) 16%,var(--dsw-alias-bg-layer-2,#fff))}',
+      '.__dpc_root{position:absolute;bottom:100%;left:0;right:0;display:flex;align-items:flex-end;gap:6px;flex-wrap:wrap;padding:0 12px 6px;pointer-events:none;z-index:5}',
+      '.__dpc_item{position:relative;pointer-events:auto;display:flex;flex-direction:column;gap:4px;max-width:240px;min-width:0}',
+      '.__dpc_pill{display:inline-flex;align-items:center;gap:6px;max-width:240px;min-width:0;height:24px;padding:0 10px;border-radius:999px;border:0.5px solid color-mix(in srgb,var(--dsw-alias-state-business-primary,#3964fe) 22%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-business-primary,#3964fe) 8%,var(--dsw-alias-bg-layer-2,#fff));color:var(--dsw-alias-label-primary-bluish,var(--dsw-alias-label-primary));font-size:12px;line-height:1;font-family:inherit;cursor:pointer;text-align:left;box-shadow:var(--dsw-elevation-2,0 1px 2px rgb(0 0 0 / 6%));transition:background-color 120ms ease,border-color 120ms ease}',
+      '.__dpc_pill:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary,#3964fe) 14%,var(--dsw-alias-bg-layer-2,#fff));border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary,#3964fe) 38%,transparent)}',
       '.__dpc_pill:focus-visible{outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:1px}',
-      '.__dpc_icon{display:inline-flex;align-items:center;color:var(--dsw-alias-state-business-primary);flex:none}',
-      '.__dpc_preview{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}',
-      '.__dpc_count{color:var(--dsw-alias-label-tertiary);flex:none}',
+      '.__dpc_icon{display:inline-flex;align-items:center;color:var(--dsw-alias-state-business-primary);flex:none;opacity:0.9}',
+      '.__dpc_preview{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1 1 auto}',
+      '.__dpc_count{color:var(--dsw-alias-label-tertiary);flex:none;font-variant-numeric:tabular-nums}',
+      '.__dpc_pill .__dpc_count{margin-left:2px;padding-left:8px;border-left:1px solid color-mix(in srgb,var(--dsw-alias-label-tertiary) 28%,transparent);font-size:11px}',
       '.__dpc_lost{color:var(--dsw-alias-state-error-primary);flex:none}',
       // The pill inside a sent message: the same chip as the one in the
       // composer, sized for a line of text. No literal colors: the theme
@@ -308,6 +311,21 @@ window.__ModuleLoader__.load({
       return String(template).replace(/\{(\w+)\}/g, (match, name) =>
         values && name in values ? String(values[name]) : match,
       )
+    }
+
+    /**
+     * The character count, kept short so a pill stays small: 6.7k instead of
+     * 6684, 12k instead of 12000. The exact number is in the drawer.
+     *
+     * @param {number} chars
+     * @returns {string}
+     */
+    function countText(chars) {
+      const n = Number(chars)
+      if (!Number.isFinite(n) || n <= 0) return format(translate('count'), { count: 0 })
+      if (n < 1000) return format(translate('count'), { count: n })
+      const k = n >= 10000 ? Math.round(n / 1000) : Math.round(n / 100) / 10
+      return format(translate('countK'), { value: String(k) })
     }
 
     /**
@@ -570,12 +588,12 @@ window.__ModuleLoader__.load({
                 type: 'button',
                 className: '__dpc_pill',
                 onClick: () => openDrawer(entry),
-                title: translate('view'),
+                title: `${previewText(entry.text, 90)} · ${countText(entry.chars)}`,
                 'aria-haspopup': 'dialog',
               },
               h('span', { className: '__dpc_icon' }, pasteIcon()),
-              h('span', { className: '__dpc_preview' }, previewText(entry.text)),
-              h('span', { className: '__dpc_count' }, format(translate('count'), { count: entry.chars })),
+              h('span', { className: '__dpc_preview' }, previewText(entry.text, 16)),
+              h('span', { className: '__dpc_count' }, countText(entry.chars)),
               entry.lost ? h('span', { className: '__dpc_lost' }, translate('lost')) : null,
             ),
           ),
@@ -698,8 +716,8 @@ window.__ModuleLoader__.load({
           'aria-haspopup': 'dialog',
         },
         h('span', { className: '__dpc_icon' }, pasteIcon()),
-        h('span', { className: '__dpc_preview' }, previewText(text ?? '', 40)),
-        h('span', { className: '__dpc_count' }, format(translate('count'), { count: chars })),
+        h('span', { className: '__dpc_preview' }, previewText(text ?? '', 24)),
+        h('span', { className: '__dpc_count' }, countText(chars)),
       )
     }
 
