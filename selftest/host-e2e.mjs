@@ -154,13 +154,16 @@ check('remember() rejects an empty placeholder', () => {
   const result = controller.remember('', 'text')
   assert.equal(result.ok, false)
 })
-check('remember() with text=null revokes the paste', () => {
+check('remember() with text=null keeps the text until the turn had its chance', () => {
   controller.remember('[Pasted Content 3000 chars]', 'another text')
   assert.equal(controller.pending.size(), 2)
   const result = controller.remember('[Pasted Content 3000 chars]', null)
   assert.deepEqual(result, { ok: true })
-  assert.equal(controller.pending.size(), 1)
-  assert.equal(controller.pending.has('[Pasted Content 3000 chars]'), false)
+  // The composer clears the draft when the turn is submitted and the
+  // expansion runs on the host after that: the text has to survive the
+  // revoke, or the model would only ever see the placeholder.
+  assert.equal(controller.pending.size(), 2)
+  assert.equal(controller.pending.has('[Pasted Content 3000 chars]'), true)
 })
 check('has() reports whether the host still holds the text', () => {
   assert.deepEqual(controller.has('[Pasted Content 2000 chars]'), { ok: true, has: true })
@@ -212,7 +215,7 @@ await checkAsync('a repeated pre-step does not expand the text twice', async () 
   const second = await ctx.emit('agent/pre-step', payload, async () => ({ kind: 'enter', messages: first.messages }))
   assert.equal(second.messages[0].content[0].text, 'once')
 })
-await checkAsync('a paste that is not in the sent turn is dropped', async () => {
+await checkAsync('a paste that was not in the sent turn stays until the client revokes it', async () => {
   controller.remember('[Pasted Content 7000 chars]', 'used')
   controller.remember('[Pasted Content 6000 chars]', 'not in this turn')
   const messages = [userMessage('[Pasted Content 7000 chars]')]
@@ -220,7 +223,9 @@ await checkAsync('a paste that is not in the sent turn is dropped', async () => 
   const decision = await ctx.emit('agent/pre-step', payload, async () => ({ kind: 'enter', messages }))
   assert.equal(decision.messages[0].content[0].text, 'used')
   assert.equal(controller.pending.has('[Pasted Content 7000 chars]'), true)
-  assert.equal(controller.pending.has('[Pasted Content 6000 chars]'), false)
+  // The host cannot tell a paste the user deleted from one that is still in
+  // the composer, so it keeps it until the client revokes it.
+  assert.equal(controller.pending.has('[Pasted Content 6000 chars]'), true)
 })
 await checkAsync('a paste that was not sent yet is not dropped', async () => {
   controller.remember('[Pasted Content 8000 chars]', 'still in the composer')
@@ -228,6 +233,34 @@ await checkAsync('a paste that was not sent yet is not dropped', async () => {
   const payload = { agent: { id: 'agent-1' }, messages, turn: 1, step: 1, signal: new AbortController().signal }
   await ctx.emit('agent/pre-step', payload, async () => ({ kind: 'enter', messages }))
   assert.equal(controller.pending.has('[Pasted Content 8000 chars]'), true)
+})
+await checkAsync('a revoked paste is still expanded in the turn that is on its way', async () => {
+  controller.remember('[Pasted Content 9000 chars]', 'the text the turn needs')
+  // The client revokes when the placeholder leaves the draft — and the draft
+  // is cleared when the turn is submitted, which happens before the host
+  // expands it.
+  controller.remember('[Pasted Content 9000 chars]', null)
+  const messages = [userMessage('[Pasted Content 9000 chars]')]
+  const payload = { agent: { id: 'agent-1' }, messages, turn: 1, step: 1, signal: new AbortController().signal }
+  const decision = await ctx.emit('agent/pre-step', payload, async () => ({ kind: 'enter', messages }))
+  assert.equal(decision.messages[0].content[0].text, 'the text the turn needs')
+})
+await checkAsync('a revoked paste the turn does not use is dropped', async () => {
+  controller.remember('[Pasted Content 11000 chars]', 'gone')
+  controller.remember('[Pasted Content 11000 chars]', null)
+  const messages = [userMessage('a turn without any placeholder')]
+  const payload = { agent: { id: 'agent-1' }, messages, turn: 1, step: 1, signal: new AbortController().signal }
+  await ctx.emit('agent/pre-step', payload, async () => ({ kind: 'enter', messages }))
+  assert.equal(controller.pending.has('[Pasted Content 11000 chars]'), false)
+})
+await checkAsync('a new paste of the same size is not shadowed by a revoked one', async () => {
+  controller.remember('[Pasted Content 12000 chars]', 'old')
+  controller.remember('[Pasted Content 12000 chars]', null)
+  controller.remember('[Pasted Content 12000 chars]', 'new')
+  const messages = [userMessage('[Pasted Content 12000 chars]')]
+  const payload = { agent: { id: 'agent-1' }, messages, turn: 1, step: 1, signal: new AbortController().signal }
+  const decision = await ctx.emit('agent/pre-step', payload, async () => ({ kind: 'enter', messages }))
+  assert.equal(decision.messages[0].content[0].text, 'new')
 })
 
 console.log('the plugin stays in memory')

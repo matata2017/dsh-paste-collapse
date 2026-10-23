@@ -304,8 +304,11 @@ window.__ModuleLoader__.load({
         entriesRef.current = kept
         for (const entry of dropped) pasteTexts.delete(entry.placeholder)
         bump((value) => value + 1)
-        // Tell the host the paste is gone, so it does not expand a
-        // placeholder the user deleted.
+        // Tell the host the paste is gone — but only when the user deleted
+        // the placeholder while the draft still had something else in it. An
+        // empty draft means the turn was submitted: the host expands the
+        // placeholder after that, so it still needs the text.
+        if (draft === '') return
         for (const entry of dropped) {
           void callWithTimeout('remember', { placeholder: entry.placeholder, text: null }, HOST_TIMEOUT_MS).catch(
             () => {},

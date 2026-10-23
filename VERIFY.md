@@ -22,7 +22,7 @@ All six commands must exit 0.
 node test/run-tests.mjs
 ```
 
-Expected: `38 passed, 0 failed, 0 skipped` (the checklist asks for at least 12
+Expected: `46 passed, 0 failed, 0 skipped` (the checklist asks for at least 12
 checks). The run covers:
 
 | Section | Checks |
@@ -39,7 +39,7 @@ checks). The run covers:
 node selftest/host-e2e.mjs
 ```
 
-Expected: `17 passed, 0 failed` (the checklist asks for at least 3 checks).
+Expected: `20 passed, 0 failed` (the checklist asks for at least 3 checks).
 `DSH_HOME` points at a temporary directory, and the last check proves that the
 plugin wrote nothing at all.
 

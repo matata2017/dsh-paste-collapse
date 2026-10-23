@@ -76,8 +76,10 @@ dsh plugin add dsh-paste-collapse
 * **不省 token。** 模型读到的仍然是全文，和直接粘贴一模一样。插件只解决输入框可读性。
 * **宿主不答应就不折叠。** 宿主调用失败或超过 1.5 秒超时时，粘贴内容按原文插入，绝不
   丢字。
-* **用户删掉占位符就作废。** 客户端和宿主都会忘掉这段原文，下次同样大小的粘贴重新从
-  裸占位符开始。
+* **用户删掉占位符就作废。** 客户端会通知宿主，宿主在这一轮用过之后再忘掉这段原文，
+  下次同样大小的粘贴重新从裸占位符开始。
+* **发送出去的那一轮不会丢原文。** 发送时输入框会被清空，而宿主的展开发生在清空之后，
+  所以原文会挺过这次清空：模型读到的是全文，不是占位符。
 
 ## 与 Codex 的差异
 
@@ -93,8 +95,8 @@ dsh plugin add dsh-paste-collapse
 node --check lib/marker.js
 node --check lib/index.js
 node --check client.js
-node test/run-tests.mjs      # 38 条：marker 规则 + 客户端 bundle
-node selftest/host-e2e.mjs   # 17 条：宿主端到端
+node test/run-tests.mjs      # 46 条：marker 规则 + 客户端 bundle
+node selftest/host-e2e.mjs   # 20 条：宿主端到端
 ```
 
 `test/client-bundle.mjs` 在假 window、假 React、假 DOM 里跑 `client.js`，不用浏览器也能

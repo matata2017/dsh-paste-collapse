@@ -575,5 +575,23 @@ export async function runClientBundleCheck() {
   check('the host is told to forget the paste', revokeCall?.args?.placeholder === '[Pasted Content 2000 chars]', `call=${JSON.stringify(revokeCall?.args)}`)
   check('the pill is gone after the placeholder was deleted', countByClass(deleting.render(), '__dpc_pill') === 0, 'the pill is still there')
 
+  // --- 9. a submitted turn must not take the text away ---------------
+  const submitting = createEnvironment()
+  submitting.render()
+  submitting.paste(pasteText)
+  await settle()
+  submitting.render()
+  check('the pill is there before the turn is sent', countByClass(submitting.render(), '__dpc_pill') === 1, 'no pill')
+  submitting.setInputState({ draft: '', draftRev: 2 })
+  submitting.render()
+  await settle()
+  const revoke = submitting.hostCalls.find((call) => call.method === 'paste/remember' && call.args?.text === null)
+  check(
+    'a cleared draft does not tell the host to forget the paste',
+    revoke === undefined,
+    `call=${JSON.stringify(revoke?.args)}`,
+  )
+  check('the pill is gone after the turn was sent', countByClass(submitting.render(), '__dpc_pill') === 0, 'the pill is still there')
+
   return items
 }

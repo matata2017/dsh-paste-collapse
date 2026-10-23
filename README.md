@@ -85,9 +85,13 @@ host half is what expands it again.
 * **A paste is only collapsed when the host answers.** If the host call fails
   or takes longer than 1.5 seconds, the text is inserted as it is — the paste
   is never lost.
-* **A placeholder the user deletes is dropped.** Both the client and the host
-  forget the text, and the next paste of the same size starts at the bare
-  placeholder again.
+* **A placeholder the user deletes is dropped.** The client tells the host, and
+  the host forgets the text once the turn has had its chance to use it — so
+  the next paste of the same size starts at the bare placeholder again.
+* **A submitted turn keeps its text.** The composer clears the draft when the
+  turn is sent, and the expansion on the host runs after that. The text
+  therefore survives the clear: the model reads the full text, not the
+  placeholder.
 
 ## Differences from Codex
 
@@ -105,8 +109,8 @@ Only two:
 node --check lib/marker.js
 node --check lib/index.js
 node --check client.js
-node test/run-tests.mjs      # 38 checks: the marker rules and the client bundle
-node selftest/host-e2e.mjs   # 17 checks: the host plugin end to end
+node test/run-tests.mjs      # 46 checks: the marker rules and the client bundle
+node selftest/host-e2e.mjs   # 20 checks: the host plugin end to end
 ```
 
 `test/client-bundle.mjs` runs `client.js` inside a fake window with a fake
