@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="DSH Paste Collapse">
+  <title>DSH Paste Collapse</title>
+  <rect x="6" y="16" width="52" height="32" rx="10" fill="none" stroke="#3964fe" stroke-width="3"/>
+  <path d="M16 28h14M23 28v10" fill="none" stroke="#3964fe" stroke-width="3" stroke-linecap="round"/>
+  <path d="M36 30h14M36 36h10" fill="none" stroke="#3964fe" stroke-width="3" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,53 @@
+{
+  "name": "dsh-paste-collapse",
+  "version": "0.1.0",
+  "description": "Collapse large pastes in the DeepSeek Harness composer into a Codex-style [Pasted Content N chars] placeholder with a clickable pill, and expand it back to the full text on the host before the model sees it. Threshold 1000, same numbering and FIFO expansion as Codex. Pure in-memory: it saves no tokens.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "lib/index.js",
+  "icon": "./icon.svg",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./client.js"
+    },
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/marker.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/en.json",
+    "locale/zh.json",
+    "icon.svg",
+    "README.md",
+    "README.zh.md",
+    "VERIFY.md"
+  ],
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "paste",
+    "codex",
+    "composer"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  }
+}

@@ -1,0 +1,7 @@
+node_modules/
+.gh-local/
+.workbuddy/
+*.log
+.tmp-*/
+HANDOFF.md
+.DS_Store

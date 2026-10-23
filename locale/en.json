@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Paste Collapse",
+    "description": "Large pastes collapse into a Codex-style placeholder and expand back to the full text before the model reads them."
+  }
+}
