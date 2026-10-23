@@ -115,3 +115,7 @@ See [VERIFY.md](./VERIFY.md) for the full acceptance checklist.
 ## License
 
 MIT
+
+## A note on top-level names
+
+The browser loader concatenates every installed plugin client bundle into one script, so a top-level `const` belongs to all plugins. This file runs inside its own function for that reason: two plugins declaring the same top-level name is a syntax error that stops the app from booting.
