@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Collapse large pastes in the DeepSeek Harness composer into a Codex-style [Pasted Content N chars] placeholder with a clickable pill, and expand it back to the full text on the host before the model sees it. Threshold 1000, same numbering and FIFO expansion as Codex. Pure in-memory: it saves no tokens.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/matata2017/dsh-paste-collapse.git"
+  },
+  "homepage": "https://github.com/matata2017/dsh-paste-collapse#readme",
+  "bugs": {
+    "url": "https://github.com/matata2017/dsh-paste-collapse/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=20"
