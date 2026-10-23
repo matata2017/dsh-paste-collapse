@@ -106,16 +106,20 @@ window.__ModuleLoader__.load({
     /* ---------------- styles ---------------- */
 
     const STYLE = [
-      '.__dpc_root{display:flex;gap:8px;flex-wrap:wrap}',
-      '.__dpc_item{display:flex;flex-direction:column;gap:4px;max-width:320px}',
-      '.__dpc_pill{display:inline-flex;align-items:center;gap:6px;max-width:320px;padding:4px 10px;border-radius:var(--dsw-radius-sm,8px);border:0.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-state-business-tertiary,color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent));color:var(--dsw-alias-label-primary-bluish,var(--dsw-alias-label-secondary));font-size:12px;line-height:16px;font-family:inherit;cursor:pointer;text-align:left}',
-      '.__dpc_pill:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      // The composer renders this slot into a zero height anchor that sits on
+      // the top edge of the card, so a plain flow box would spill over the
+      // card's border. Float the row above the composer, the way the slash
+      // menu does (bottom: 100% + gap).
+      '.__dpc_root{position:absolute;bottom:calc(100% + 8px);left:0;right:0;display:flex;gap:8px;flex-wrap:wrap;padding:0 12px 4px;pointer-events:none;z-index:5}',
+      '.__dpc_item{position:relative;pointer-events:auto;display:flex;flex-direction:column;gap:4px;max-width:320px}',
+      '.__dpc_pill{display:inline-flex;align-items:center;gap:6px;max-width:320px;padding:3px 10px;border-radius:999px;border:0.5px solid color-mix(in srgb,var(--dsw-alias-state-business-primary,#3964fe) 26%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-business-primary,#3964fe) 10%,var(--dsw-alias-bg-layer-2,#fff));color:var(--dsw-alias-label-primary-bluish,var(--dsw-alias-label-primary));font-size:12px;line-height:16px;font-family:inherit;cursor:pointer;text-align:left;box-shadow:var(--dsw-elevation-2,0 1px 2px rgb(0 0 0 / 6%))}',
+      '.__dpc_pill:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary,#3964fe) 16%,var(--dsw-alias-bg-layer-2,#fff))}',
       '.__dpc_pill:focus-visible{outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:1px}',
-      '.__dpc_icon{display:inline-flex;align-items:center;color:var(--dsw-alias-state-business-primary)}',
-      '.__dpc_preview{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}',
+      '.__dpc_icon{display:inline-flex;align-items:center;color:var(--dsw-alias-state-business-primary);flex:none}',
+      '.__dpc_preview{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}',
       '.__dpc_count{color:var(--dsw-alias-label-tertiary);flex:none}',
       '.__dpc_lost{color:var(--dsw-alias-state-error-primary);flex:none}',
-      '.__dpc_panel{background:var(--dsw-alias-bg-layer-1,#fff);border:0.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-sm,8px);padding:8px;max-height:240px;overflow:auto;white-space:pre-wrap;font-size:12px}',
+      '.__dpc_panel{position:absolute;bottom:calc(100% + 6px);left:0;z-index:6;min-width:320px;max-width:480px;background:var(--dsw-alias-bg-layer-1,#fff);border:0.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-sm,8px);padding:8px;max-height:240px;overflow:auto;white-space:pre-wrap;font-size:12px;box-shadow:var(--dsw-elevation-prominent,0 4px 16px rgb(0 0 0 / 10%))}',
     ]
 
     /* ---------------- connection ---------------- */
@@ -383,10 +387,13 @@ window.__ModuleLoader__.load({
                     viewBox: '0 0 16 16',
                     fill: 'none',
                     stroke: 'currentColor',
-                    strokeWidth: 1.6,
+                    strokeWidth: 1.4,
                     strokeLinecap: 'round',
+                    strokeLinejoin: 'round',
                   },
-                  h('path', { d: 'M3 4h10M8 4v9' }),
+                  h('path', { d: 'M4 2.5h4.5L12 6v7.5H4z' }),
+                  h('path', { d: 'M8.5 2.5V6H12' }),
+                  h('path', { d: 'M6 9h4M6 11.5h3' }),
                 ),
               ),
               h('span', { className: '__dpc_preview' }, previewText(entry.text)),
