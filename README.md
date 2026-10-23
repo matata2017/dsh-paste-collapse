@@ -38,11 +38,15 @@ and `expand_pending_pastes`.
 
 ## The pill
 
-Every collapsed paste gets a pill above the composer:
+Every collapsed paste gets a pill on the top edge of the composer:
 
 * the first line of the pasted text, cut to 24 characters
 * the number of characters
-* click it to open the full text in a panel, click it again to close it
+* click it to open the full text in a side panel
+
+The side panel is the drawer Codex and WorkBuddy use: the whole text, the
+character count, a copy button and a close button. `Esc` or a click outside
+closes it.
 
 The pill uses the DSH native colours (CSS variables only, no hard coded hex),
 so it follows the light and the dark theme.

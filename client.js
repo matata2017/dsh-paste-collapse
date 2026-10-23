@@ -90,6 +90,11 @@ window.__ModuleLoader__.load({
       lost: 'text lost',
       expand: 'show the full text',
       collapse: 'collapse',
+      drawerTitle: 'Pasted text',
+      view: 'view',
+      copy: 'Copy',
+      copied: 'Copied',
+      close: 'Close',
     }
 
     const zh = {
@@ -101,6 +106,11 @@ window.__ModuleLoader__.load({
       lost: '原文已丢失',
       expand: '展开全文',
       collapse: '收起',
+      drawerTitle: '粘贴文本',
+      view: '查看',
+      copy: '复制',
+      copied: '已复制',
+      close: '关闭',
     }
 
     /* ---------------- styles ---------------- */
@@ -109,8 +119,9 @@ window.__ModuleLoader__.load({
       // The composer renders this slot into a zero height anchor that sits on
       // the top edge of the card, so a plain flow box would spill over the
       // card's border. Float the row above the composer, the way the slash
-      // menu does (bottom: 100% + gap).
-      '.__dpc_root{position:absolute;bottom:calc(100% + 8px);left:0;right:0;display:flex;gap:8px;flex-wrap:wrap;padding:0 12px 4px;pointer-events:none;z-index:5}',
+      // menu does (bottom: 100% + gap). The row sits ON the edge (no gap) so
+      // the pill reads as a tab of the input box instead of a floating box.
+      '.__dpc_root{position:absolute;bottom:100%;left:0;right:0;display:flex;gap:6px;flex-wrap:wrap;padding:0 12px;pointer-events:none;z-index:5}',
       '.__dpc_item{position:relative;pointer-events:auto;display:flex;flex-direction:column;gap:4px;max-width:320px}',
       '.__dpc_pill{display:inline-flex;align-items:center;gap:6px;max-width:320px;padding:3px 10px;border-radius:999px;border:0.5px solid color-mix(in srgb,var(--dsw-alias-state-business-primary,#3964fe) 26%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-business-primary,#3964fe) 10%,var(--dsw-alias-bg-layer-2,#fff));color:var(--dsw-alias-label-primary-bluish,var(--dsw-alias-label-primary));font-size:12px;line-height:16px;font-family:inherit;cursor:pointer;text-align:left;box-shadow:var(--dsw-elevation-2,0 1px 2px rgb(0 0 0 / 6%))}',
       '.__dpc_pill:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary,#3964fe) 16%,var(--dsw-alias-bg-layer-2,#fff))}',
@@ -119,13 +130,62 @@ window.__ModuleLoader__.load({
       '.__dpc_preview{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}',
       '.__dpc_count{color:var(--dsw-alias-label-tertiary);flex:none}',
       '.__dpc_lost{color:var(--dsw-alias-state-error-primary);flex:none}',
-      '.__dpc_panel{position:absolute;bottom:calc(100% + 6px);left:0;z-index:6;min-width:320px;max-width:480px;background:var(--dsw-alias-bg-layer-1,#fff);border:0.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-sm,8px);padding:8px;max-height:240px;overflow:auto;white-space:pre-wrap;font-size:12px;box-shadow:var(--dsw-elevation-prominent,0 4px 16px rgb(0 0 0 / 10%))}',
+      // The side panel: the full pasted text, the way Codex and WorkBuddy open
+      // a drawer instead of squeezing the text into a popover.
+      '.__dpc_backdrop{position:fixed;inset:0;z-index:1199;background:rgb(0 0 0 / 18%)}',
+      '.__dpc_drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,92vw);z-index:1200;display:flex;flex-direction:column;background:var(--dsw-alias-bg-layer-1,#fff);border-left:0.5px solid var(--dsw-alias-border-l2);box-shadow:var(--dsw-elevation-prominent,0 4px 24px rgb(0 0 0 / 12%))}',
+      '.__dpc_drawerHead{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:0.5px solid var(--dsw-alias-border-l2)}',
+      '.__dpc_drawerTitle{font-size:13px;font-weight:600;flex:none;color:var(--dsw-alias-label-primary)}',
+      '.__dpc_drawerBody{flex:1;min-height:0;overflow:auto;padding:12px 14px;white-space:pre-wrap;word-break:break-word;font-size:12.5px;line-height:1.6;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--dsw-alias-label-primary)}',
+      '.__dpc_drawerActions{display:flex;gap:8px;padding:10px 14px;border-top:0.5px solid var(--dsw-alias-border-l2)}',
+      '.__dpc_btn{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:var(--dsw-radius-sm,6px);border:0.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2,#fff);color:var(--dsw-alias-label-primary);font-size:12px;line-height:18px;font-family:inherit;cursor:pointer}',
+      '.__dpc_btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgb(0 0 0 / 4%))}',
+      '.__dpc_iconBtn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:var(--dsw-radius-sm,6px);border:0;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;font-size:13px;line-height:1}',
+      '.__dpc_iconBtn:hover{background:var(--dsw-alias-interactive-bg-hover,rgb(0 0 0 / 4%))}',
     ]
 
     /* ---------------- connection ---------------- */
 
     let connection = null
     let translate = (key) => key
+
+    /* ---------------- the side panel ---------------- */
+
+    /**
+     * The text of every collapsed paste, by placeholder. The drawer reads it
+     * from here so the drawer can live in its own slot (the shell overlay)
+     * while the composer keeps the pills.
+     *
+     * @type {Map<string, string>}
+     */
+    const pasteTexts = new Map()
+
+    /** The paste the drawer shows, or null when it is closed. */
+    let drawerState = null
+    const drawerListeners = new Set()
+
+    /**
+     * @param {{ placeholder: string, chars: number } | null} next
+     */
+    function setDrawer(next) {
+      drawerState = next
+      for (const listener of drawerListeners) listener()
+    }
+
+    /**
+     * @returns {{ placeholder: string, chars: number } | null}
+     */
+    function useDrawer() {
+      const [, bump] = React.useState(0)
+      React.useEffect(() => {
+        const listener = () => bump((value) => value + 1)
+        drawerListeners.add(listener)
+        return () => {
+          drawerListeners.delete(listener)
+        }
+      }, [])
+      return drawerState
+    }
 
     function setConnection(value) {
       connection = value ?? null
@@ -180,6 +240,30 @@ window.__ModuleLoader__.load({
     /* ---------------- the pill row ---------------- */
 
     /**
+     * The document icon on a pill and in the drawer header.
+     *
+     * @returns {React.ReactNode}
+     */
+    function pasteIcon() {
+      return h(
+        'svg',
+        {
+          width: 12,
+          height: 12,
+          viewBox: '0 0 16 16',
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.4,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+        },
+        h('path', { d: 'M4 2.5h4.5L12 6v7.5H4z' }),
+        h('path', { d: 'M8.5 2.5V6H12' }),
+        h('path', { d: 'M6 9h4M6 11.5h3' }),
+      )
+    }
+
+    /**
      * The overlay slot component: one pill per collapsed paste.
      *
      * @param {{ inputActions?: unknown, useInput?: unknown }} props
@@ -218,6 +302,7 @@ window.__ModuleLoader__.load({
         if (kept.length === entriesRef.current.length) return
         const dropped = entriesRef.current.filter((entry) => !draft.includes(entry.placeholder))
         entriesRef.current = kept
+        for (const entry of dropped) pasteTexts.delete(entry.placeholder)
         bump((value) => value + 1)
         // Tell the host the paste is gone, so it does not expand a
         // placeholder the user deleted.
@@ -347,16 +432,14 @@ window.__ModuleLoader__.load({
         }
         entriesRef.current = [
           ...entriesRef.current,
-          { placeholder, chars: text.length, text, expanded: false, lost: false, checked: false },
+          { placeholder, chars: text.length, text, lost: false, checked: false },
         ]
+        pasteTexts.set(placeholder, text)
         bump((value) => value + 1)
       }
 
-      function toggle(placeholder) {
-        entriesRef.current = entriesRef.current.map((entry) =>
-          entry.placeholder === placeholder ? { ...entry, expanded: !entry.expanded } : entry,
-        )
-        bump((value) => value + 1)
+      function openDrawer(entry) {
+        setDrawer({ placeholder: entry.placeholder, chars: entry.chars })
       }
 
       if (!inputActions) return null
@@ -372,35 +455,101 @@ window.__ModuleLoader__.load({
               {
                 type: 'button',
                 className: '__dpc_pill',
-                onClick: () => toggle(entry.placeholder),
-                title: entry.expanded ? translate('collapse') : translate('expand'),
-                'aria-expanded': entry.expanded ? 'true' : 'false',
+                onClick: () => openDrawer(entry),
+                title: translate('view'),
+                'aria-haspopup': 'dialog',
               },
-              h(
-                'span',
-                { className: '__dpc_icon' },
-                h(
-                  'svg',
-                  {
-                    width: 12,
-                    height: 12,
-                    viewBox: '0 0 16 16',
-                    fill: 'none',
-                    stroke: 'currentColor',
-                    strokeWidth: 1.4,
-                    strokeLinecap: 'round',
-                    strokeLinejoin: 'round',
-                  },
-                  h('path', { d: 'M4 2.5h4.5L12 6v7.5H4z' }),
-                  h('path', { d: 'M8.5 2.5V6H12' }),
-                  h('path', { d: 'M6 9h4M6 11.5h3' }),
-                ),
-              ),
+              h('span', { className: '__dpc_icon' }, pasteIcon()),
               h('span', { className: '__dpc_preview' }, previewText(entry.text)),
               h('span', { className: '__dpc_count' }, format(translate('count'), { count: entry.chars })),
               entry.lost ? h('span', { className: '__dpc_lost' }, translate('lost')) : null,
             ),
-            entry.expanded ? h('div', { className: '__dpc_panel' }, entry.text) : null,
+          ),
+        ),
+      )
+    }
+
+    /* ---------------- the side panel ---------------- */
+
+    /**
+     * The drawer with the full pasted text. Codex and WorkBuddy open a side
+     * panel for a collapsed paste; the composer keeps only the tab.
+     */
+    function PasteDrawer() {
+      const state = useDrawer()
+      const [copied, setCopied] = React.useState(false)
+
+      React.useEffect(() => {
+        if (!state) return undefined
+        const onKey = (event) => {
+          if (event.key === 'Escape') setDrawer(null)
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+      }, [state])
+
+      React.useEffect(() => {
+        if (!copied) return undefined
+        const timer = setTimeout(() => setCopied(false), 1500)
+        return () => clearTimeout(timer)
+      }, [copied])
+
+      if (!state) return null
+      const text = pasteTexts.get(state.placeholder)
+
+      async function copy() {
+        if (typeof text !== 'string') return
+        try {
+          await navigator.clipboard?.writeText(text)
+          setCopied(true)
+        } catch {
+          /* the clipboard may be denied: the text stays on screen */
+        }
+      }
+
+      return h(
+        React.Fragment,
+        null,
+        h('div', { className: '__dpc_backdrop', onClick: () => setDrawer(null) }),
+        h(
+          'aside',
+          {
+            className: '__dpc_drawer',
+            role: 'dialog',
+            'aria-modal': 'true',
+            'aria-label': translate('drawerTitle'),
+          },
+          h(
+            'div',
+            { className: '__dpc_drawerHead' },
+            h('span', { className: '__dpc_icon' }, pasteIcon()),
+            h('span', { className: '__dpc_drawerTitle' }, translate('drawerTitle')),
+            h('span', { className: '__dpc_count' }, format(translate('count'), { count: state.chars })),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: '__dpc_iconBtn',
+                'aria-label': translate('close'),
+                onClick: () => setDrawer(null),
+              },
+              '✕',
+            ),
+          ),
+          h(
+            'div',
+            { className: '__dpc_drawerBody' },
+            typeof text === 'string' ? text : translate('lost'),
+          ),
+          h(
+            'div',
+            { className: '__dpc_drawerActions' },
+            h(
+              'button',
+              { type: 'button', className: '__dpc_btn', onClick: () => { void copy() } },
+              copied ? translate('copied') : translate('copy'),
+            ),
+            h('button', { type: 'button', className: '__dpc_btn', onClick: () => setDrawer(null) }, translate('close')),
           ),
         ),
       )
@@ -433,6 +582,22 @@ window.__ModuleLoader__.load({
           )
         } catch {
           /* the composer overlay slot is optional */
+        }
+        try {
+          client.slots.inject('shell.overlay', () =>
+            client.slots.register(
+              {
+                name: 'shell.overlay',
+                id: 'dsh-paste-collapse/drawer',
+                order: 40,
+                locale: NS,
+                inject: () => ({ t: translate }),
+              },
+              PasteDrawer,
+            ),
+          )
+        } catch {
+          /* the shell overlay slot is optional */
         }
         setConnection(resolveHandle(client.connection))
       })

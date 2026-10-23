@@ -200,6 +200,7 @@ function createDomNode(tag, props, dom) {
     nodeType: 1,
     tagName: String(tag).toUpperCase(),
     className: props?.className ?? '',
+    props: props ?? {},
     children: [],
     closest(selector) {
       if (selector === '[data-composer-card]') return dom.card
@@ -308,6 +309,8 @@ function createEnvironment(options = {}) {
 
   const window = {
     __DSH_BOOT__: { entries: [{ id: 'dsh-paste-collapse' }] },
+    addEventListener() {},
+    removeEventListener() {},
     __ModuleLoader__: {
       load(spec) {
         window.__ModuleLoader__.module = spec.factory((name) => {
@@ -323,6 +326,7 @@ function createEnvironment(options = {}) {
     window,
     document: dom.document,
     console,
+    navigator: { clipboard: { writeText: async () => {} } },
     setTimeout,
     clearTimeout,
     setInterval,
@@ -360,6 +364,8 @@ function createEnvironment(options = {}) {
 
   const registration = registrations.find((entry) => entry.name === 'conversation.input.overlay')
   const component = registration?.entry?.component
+  const drawerRegistration = registrations.find((entry) => entry.name === 'shell.overlay')
+  const drawerComponent = drawerRegistration?.entry?.component
 
   const inserted = []
   const inputActions = {
@@ -388,6 +394,10 @@ function createEnvironment(options = {}) {
     },
     render(props) {
       return renderComponent(component, { inputActions, useInput, ...props })
+    },
+    drawerComponent,
+    renderDrawer(props) {
+      return renderComponent(drawerComponent, props)
     },
     unmount() {
       unmountComponent(component)
@@ -467,6 +477,33 @@ export async function runClientBundleCheck() {
   check('a pill is rendered', pill !== null, 'no .__dpc_pill found')
   check('the pill shows the preview', pillText.includes('HEAD-'), `pill text=${JSON.stringify(pillText)}`)
   check('the pill shows the character count', pillText.includes('2000'), `pill text=${JSON.stringify(pillText)}`)
+
+  // --- 2b. the pill opens a side panel with the whole text ------------
+  check(
+    'the side panel is closed at first',
+    findByClass(env.renderDrawer(), '__dpc_drawer') === null,
+    'the side panel was open before any click',
+  )
+  findByClass(tree, '__dpc_pill')?.props?.onClick?.()
+  const drawer = env.renderDrawer()
+  const drawerText = collectText(findByClass(drawer, '__dpc_drawer')).join('')
+  check(
+    'clicking the pill opens the side panel',
+    findByClass(drawer, '__dpc_drawer') !== null,
+    'no .__dpc_drawer found after the click',
+  )
+  check(
+    'the side panel shows the whole text',
+    drawerText.includes('HEAD-') && drawerText.includes('z'),
+    `drawer text=${JSON.stringify(drawerText.slice(0, 60))}`,
+  )
+  check('the side panel shows the character count', drawerText.includes('2000'), `drawer text=${JSON.stringify(drawerText)}`)
+  findByClass(drawer, '__dpc_iconBtn')?.props?.onClick?.()
+  check(
+    'the side panel closes again',
+    findByClass(env.renderDrawer(), '__dpc_drawer') === null,
+    'the side panel stayed open after the close button',
+  )
 
   // --- 3. a second paste of the same size gets #2 ---------------------
   env.paste(pasteText)
