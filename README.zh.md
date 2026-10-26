@@ -71,8 +71,11 @@ facade 分配（`guard.ts` 的 `allocatePriority()`），后注册的插件半�
 
 ```bash
 # 在 DSH profile 里
-dsh plugin add dsh-paste-collapse
+dsh plugin --profile desktop add github:matata2017/dsh-paste-collapse
 ```
+
+要用 `github:` 这种写法：本插件没有发布到 npm，npm 上的 `dsh-paste-collapse`
+是另一个作者的包。
 
 或者链接本地目录：
 

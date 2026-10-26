@@ -86,8 +86,11 @@ registrations.
 
 ```bash
 # in the DSH profile
-dsh plugin add dsh-paste-collapse
+dsh plugin --profile desktop add github:matata2017/dsh-paste-collapse
 ```
+
+Use the `github:` form: this plugin is not published to npm, and the name
+`dsh-paste-collapse` on npm belongs to a different author's package.
 
 or link a checkout:
 
