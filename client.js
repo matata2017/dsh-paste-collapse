@@ -878,7 +878,7 @@ window.__ModuleLoader__.load({
         client.effect(() => client.locale.register(NS, { zh, en }), 'dsh-paste-collapse: dictionaries')
         client.effect(() => {
           const style = document.createElement('style')
-          style.textContent = STYLE
+          style.textContent = STYLE.join('\n')
           document.head.append(style)
           return () => style.remove()
         }, 'dsh-paste-collapse: style')

@@ -485,9 +485,29 @@ export async function runClientBundleCheck() {
   const pasteText = `HEAD-${'z'.repeat(2000 - 5)}`
   const shortText = 'too short'
 
-  // --- 1. a large paste becomes the Codex placeholder -----------------
   const env = createEnvironment()
   env.render()
+
+  // --- 0. the stylesheet reaches the browser as CSS, not as a JS array --
+  // A style element's textContent takes only a string. An array stringifies to
+  // ".a{..},.b{..}" and the browser drops every rule after the first, which
+  // left the drawer unstyled (position:static, full width) in the real app.
+  // The fake DOM stores whatever was assigned, so stringify the way a browser would.
+  const styleText = String(env.dom.head.children.at(-1)?.textContent ?? '')
+  const styleRules = styleText.split('\n').filter((line) => line.trim().startsWith('.__dpc'))
+  check('the stylesheet is injected', styleText.length > 0, 'no style element was appended')
+  check(
+    'the browser receives every rule, not a comma-joined JS array',
+    !styleText.includes('},.') && styleRules.length === 25,
+    `rules=${styleRules.length} commaJoined=${styleText.includes('},.')}`,
+  )
+  check(
+    'the drawer rule keeps its fixed side panel positioning',
+    styleText.includes('.__dpc_drawer{position:fixed;top:0;right:0;bottom:0;'),
+    'the drawer rule lost its fixed positioning',
+  )
+
+  // --- 1. a large paste becomes the Codex placeholder -----------------
   const event = env.paste(pasteText)
   await settle()
 
